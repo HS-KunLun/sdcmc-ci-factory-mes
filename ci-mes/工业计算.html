@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+	<head>
+		<link rel="icon" type="image/png" href="logo.png">
+		<meta charset="UTF-8">
+			<title>彼风工业计算器</title>
+			<style>
+				body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a1a; color: #e0e0e0; padding: 20px; max-width: 1300px; margin: auto; }
+				h2 { color: #f39c12; border-bottom: 2px solid #f39c12; padding-bottom: 8px; display: flex; justify-content: space-between; }
+				table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+				th, td { border: 1px solid #444; padding: 6px; text-align: center; vertical-align: middle; }
+				th { background: #2c3e50; color: #f39c12; }
+				input { width: 90%; padding: 4px; background: #2a2a2a; color: #fff; border: 1px solid #555; border-radius: 3px; text-align: center; }
+				.product-list { text-align: left; font-size: 12px; color: #aaa; }
+				.btn { padding: 8px 15px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+				.btn-add { background: #27ae60; color: #fff; }
+				.btn-clear { background: #c0392b; color: #fff; }
+				.btn-export { background: #8e44ad; color: #fff; }
+				.btn-import { background: #d35400; color: #fff; }
+				.btn-del { background: #7f8c8d; color: #fff; padding: 4px 8px; font-size: 12px; }
+				.result-box { margin-top: 20px; padding: 15px; background: #2c3e50; border-left: 4px solid #f39c12; border-radius: 4px; }
+				.highlight { color: #f1c40f; font-weight: bold; font-size: 16px; }
+				.warn { color: #e74c3c; font-weight: bold; }
+				.ok { color: #2ecc71; font-weight: bold; }
+				.product-input-group { display: flex; gap: 5px; margin-bottom: 4px; }
+				.product-input-group input { width: 45%; }
+			</style>
+		</head>
+	<body>
+
+		<h2>
+			🏭 彼风工业 · 产线电力与产物计算系统
+			<span style="font-size: 14px; color: #7f8c8d;">本地自动保存 | 支持导入导出 | 电力计算</span>
+			<span style="font-size: 14px; color: #7f8c8d;">由HS_KunLun制作| 加入混分谢谢喵</span>
+		</h2>
+
+		<div>
+			<button class="btn btn-add" onclick="addMachine()">➕ 增加机器</button>
+			<button class="btn btn-clear" onclick="clearAll()">🗑️ 清空所有记录</button>
+			<button class="btn btn-export" onclick="exportData()">📤 导出数据 (JSON)</button>
+			<label class="btn btn-import" style="display:inline-block; text-align:center;">
+				📥 导入数据 <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importData(event)">
+        </label>
+		</div>
+
+		<table id="machineTable">
+			<thead>
+				<tr>
+					<th width="12%">机器名称</th>
+					<th width="7%">数量</th>
+					<th width="10%">循环周期 (秒/次)</th>
+					<th width="25%">产物期望值 (物品名: 产出/次)</th>
+					<th width="13%">单次耗电 (EU/次)</th>
+					<th width="13%">单次发电 (EU/次)</th>
+					<th width="8%">操作</th>
+				</tr>
+			</thead>
+			<tbody>
+				<!-- 由 JS 动态生成 -->
+			</tbody>
+		</table>
+
+		<div class="result-box" id="output">
+			👆 数据输入后会自动保存并实时计算。
+		</div>
+
+		<script>
+			// 数据结构
+			let machines = JSON.parse(localStorage.getItem('mc_machines_v3')) || [];
+
+			// 初始化
+			function init() {
+			renderTable();
+			calculate();
+			}
+
+			// 渲染表格
+			function renderTable() {
+			const tbody = document.querySelector("#machineTable tbody");
+			tbody.innerHTML = "";
+
+			machines.forEach((machine, index) => {
+			const tr = document.createElement("tr");
+
+			let productHTML = `<div class="product-list">
+				`;
+				machine.products.forEach((prod, pIndex) => {
+				productHTML += `
+				<div class="product-input-group">
+					<input type="text" placeholder="物品名" value="${prod.name}" onchange="updateProduct(${index}, ${pIndex}, 'name', this.value)">
+						<input type="number" placeholder="数量" value="${prod.amount}" onchange="updateProduct(${index}, ${pIndex}, 'amount', this.value)">
+							<button class="btn btn-del" style="width: 10%;" onclick="removeProduct(${index}, ${pIndex})">x</button>
+						</div>
+				`;
+				});
+				productHTML += `<button class="btn btn-del" style="margin-top: 4px;" onclick="addProduct(${index})">+ 增加产物</button>
+			</div>`;
+
+			tr.innerHTML = `
+			<td>
+				<input type="text" value="${machine.name}" onchange="updateField(${index}, 'name', this.value)">
+			</td>
+			<td>
+				<input type="number" value="${machine.count}" step="0.1" onchange="updateField(${index}, 'count', this.value)">
+			</td>
+			<td>
+				<input type="number" value="${machine.cycle}" onchange="updateField(${index}, 'cycle', this.value)">
+			</td>
+			<td>${productHTML}</td>
+			<td>
+				<input type="number" value="${machine.energyConsume || 0}" onchange="updateField(${index}, 'energyConsume', this.value)">
+			</td>
+			<td>
+				<input type="number" value="${machine.energyGen || 0}" onchange="updateField(${index}, 'energyGen', this.value)">
+			</td>
+			<td>
+				<button class="btn btn-del" onclick="deleteMachine(${index})">删除</button>
+			</td>
+			`;
+			tbody.appendChild(tr);
+			});
+			}
+
+			// 基础操作
+			function addMachine() {
+			machines.push({ name: "新机器", count: 1, cycle: 1, energyConsume: 0, energyGen: 0, products: [{ name: "产物A", amount: 1 }] });
+			saveAndRender();
+			}
+			function deleteMachine(index) { machines.splice(index, 1); saveAndRender(); }
+			function clearAll() { if (confirm("确定要清空所有记录吗？")) { machines = []; saveAndRender(); } }
+			function updateField(index, field, value) { machines[index][field] = field === 'name' ? value : parseFloat(value) || 0; saveAndRender(); }
+			function addProduct(machineIndex) { machines[machineIndex].products.push({ name: "新产物", amount: 1 }); saveAndRender(); }
+			function removeProduct(machineIndex, prodIndex) { machines[machineIndex].products.splice(prodIndex, 1); saveAndRender(); }
+			function updateProduct(machineIndex, prodIndex, field, value) { machines[machineIndex].products[prodIndex][field] = field === 'name' ? value : parseFloat(value) || 0; saveAndRender(); }
+
+			// 保存并渲染
+			function saveAndRender() {
+			localStorage.setItem('mc_machines_v3', JSON.stringify(machines));
+			renderTable();
+			calculate();
+			}
+
+			// 导入导出
+			function exportData() {
+			if (machines.length === 0) { alert("账本是空的！"); return; }
+			const dataStr = JSON.stringify(machines, null, 2);
+			const blob = new Blob([dataStr], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			const date = new Date().toISOString().slice(0,10);
+			a.download = `烂角咀电网备份_${date}.json`;
+			a.click();
+			URL.revokeObjectURL(url);
+			}
+
+			function importData(event) {
+			const file = event.target.files[0];
+			if (!file) return;
+			const reader = new FileReader();
+			reader.onload = function(e) {
+			try {
+			const importedData = JSON.parse(e.target.result);
+			if (Array.isArray(importedData)) {
+			if (confirm("导入将覆盖当前所有数据，确定继续吗？")) {
+			machines = importedData;
+			saveAndRender();
+			alert("导入成功！");
+			}
+			} else { alert("数据格式错误！"); }
+			} catch (err) { alert("读取文件失败！"); }
+			};
+			reader.readAsText(file);
+			event.target.value = '';
+			}
+
+			// ---------- 核心计算逻辑 ----------
+			function calculate() {
+			let outputHTML = `<h3>📊 实时产线数据</h3>`;
+			if (machines.length === 0) {
+			outputHTML += "<p class='warn'>台账为空，请点击“增加机器”。</p>";
+			document.getElementById("output").innerHTML = outputHTML;
+			return;
+			}
+
+			let grandTotalSpeed = {};
+			let totalEnergyConsumePerSec = 0;
+			let totalEnergyGenPerSec = 0;
+
+			machines.forEach(machine => {
+			if (machine.cycle <= 0) return;
+
+			const cyclesPerMin = 60 / machine.cycle;
+			const totalCycles = machine.count * cyclesPerMin;
+
+			// 累加电力（换算成每秒）
+			const consumePerSec = (totalCycles * (machine.energyConsume || 0)) / 60;
+			const genPerSec = (totalCycles * (machine.energyGen || 0)) / 60;
+			totalEnergyConsumePerSec += consumePerSec;
+			totalEnergyGenPerSec += genPerSec;
+
+			// 判断这台机器本身是耗电还是发电
+			let energyText = "";
+			if (machine.energyConsume > 0) energyText = `耗电 <span class="warn">${consumePerSec.toFixed(2)} EU/s</span>`;
+			if (machine.energyGen > 0) energyText = `发电 <span class="ok">${genPerSec.toFixed(2)} EU/s</span>`;
+
+			outputHTML += `<div style="margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #444;">
+				`;
+				outputHTML += `<p>
+					🔹 <b>${machine.name}</b> (${machine.count}台)：单次耗时 ${machine.cycle}秒，每分钟运行 <span class="highlight">${totalCycles.toFixed(2)}</span> 次。 ${energyText}
+				</p>`;
+
+				machine.products.forEach(prod => {
+				if (!prod.name) return;
+				const prodRate = totalCycles * prod.amount;
+				if (!grandTotalSpeed[prod.name]) grandTotalSpeed[prod.name] = 0;
+				grandTotalSpeed[prod.name] += prodRate;
+				outputHTML += `<p style="margin-left: 20px; font-size: 14px;">
+					└─ ${prod.name}: 每次产 ${prod.amount}，每分钟总产 <span class="highlight">${prodRate.toFixed(2)}</span> 个
+				</p>`;
+				});
+				outputHTML += `
+			</div>`;
+			});
+
+			outputHTML += `<hr>
+				<h3>🏭 全厂综合产出率</h3>`;
+				for (const [item, rate] of Object.entries(grandTotalSpeed)) {
+				outputHTML += `<p>
+					📦 <b>${item}</b>: 每分钟总产 <span class="highlight">${rate.toFixed(2)}</span> 个
+				</p>`;
+				}
+
+				// 电网健康度分析
+				outputHTML += `<hr>
+					<h3>⚡ 电网调度状态</h3>`;
+					outputHTML += `<p>
+						总发电速率: <span class="ok">${totalEnergyGenPerSec.toFixed(2)} EU/s</span>
+					</p>`;
+					outputHTML += `<p>
+						总耗电速率: <span class="warn">${totalEnergyConsumePerSec.toFixed(2)} EU/s</span>
+					</p>`;
+
+					const netEnergy = totalEnergyGenPerSec - totalEnergyConsumePerSec;
+					if (netEnergy > 0) {
+					outputHTML += `<p style="font-size: 18px; margin-top: 10px;">
+						✅ <b>电网盈余：</b> <span class="ok">+${netEnergy.toFixed(2)} EU/s</span>。电力充足，可继续扩产。
+					</p>`;
+					} else if (netEnergy === 0) {
+					outputHTML += `<p style="font-size: 18px; margin-top: 10px;">
+						⚠️ <b>电网满载：</b> 发电与耗电完全持平。没有任何冗余，极易卡顿。
+					</p>`;
+					} else {
+					outputHTML += `<p style="font-size: 18px; margin-top: 10px;">
+						🚨 <b>电网崩溃：</b> <span class="warn">${netEnergy.toFixed(2)} EU/s</span>。你缺电了！机器将会停摆，赶紧加发电机！
+					</p>`;
+					}
+
+					document.getElementById("output").innerHTML = outputHTML;
+					}
+
+					window.onload = init;
+				</script>
+	</body>
+</html>
